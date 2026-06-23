@@ -326,7 +326,7 @@ export function SaleForm({ products }: Props) {
         )}
 
         <div className="card p-4">
-          <label className="label">Rechercher un produit</label>
+          <label className="label">Recherche un produit</label>
           <div className="relative mb-3">
             <Search
               size={16}
