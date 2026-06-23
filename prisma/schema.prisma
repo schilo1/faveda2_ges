@@ -1,0 +1,560 @@
+// ============================================================
+//  FAVEDA Stock Management — Prisma Schema
+//  Base de données : MySQL
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ──────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  GESTIONNAIRE
+  SURVEILLANT
+  COMMERCIAL
+}
+
+enum MovementType {
+  ENTREE
+  SORTIE
+  VENTE
+  PERTE
+  RETOUR_CLIENT
+  RETOUR_FOURNISSEUR
+  TRANSFERT
+  AJUSTEMENT
+}
+
+enum AlertType {
+  RUPTURE_STOCK
+  SEUIL_MINIMUM
+  PROCHE_PEREMPTION
+  SURSTOCK
+  FAIBLE_ROTATION
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum TransferStatus {
+  EN_ATTENTE
+  CONFIRME
+  ANNULE
+}
+
+enum ReportType {
+  ETAT_STOCK
+  MOUVEMENTS
+  VENTES
+  RUPTURES
+  PEREMPTIONS
+  VALORISATION
+  INVENTAIRE
+  PERTES
+  RETOURS
+}
+
+enum PreorderStatus {
+  EN_ATTENTE
+  PAYEE
+  LIVREE
+  ANNULEE
+  REMBOURSEE
+}
+
+// ─── USER ───────────────────────────────────────────────────
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  nom       String
+  prenom    String
+  password  String
+  role      Role      @default(SURVEILLANT)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  movements    StockMovement[]
+  transfers    StockTransfer[]
+  inventories  Inventory[]
+  financeBudgets FinanceBudget[]
+  rawMaterialExpenses RawMaterialExpense[]
+  preorders Preorder[]
+  preorderPaymentHistories PreorderPaymentHistory[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+// ─── CATEGORY ───────────────────────────────────────────────
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?   @db.Text
+  color       String?   @default("#596744")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  products Product[]
+
+  @@map("categories")
+}
+
+// ─── UNIT ────────────────────────────────────────────────────
+
+model Unit {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  symbol    String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  products Product[]
+
+  @@map("units")
+}
+
+// ─── SUPPLIER ───────────────────────────────────────────────
+
+model Supplier {
+  id          String    @id @default(cuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?   @db.Text
+  comment     String?   @db.Text
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  products Product[]
+  rawMaterials RawMaterial[]
+  rawMaterialExpenses RawMaterialExpense[]
+
+  @@map("suppliers")
+}
+
+// ─── STOCK LOCATION (Sites) ──────────────────────────────────
+
+model StockLocation {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  sourceTransfers StockTransfer[] @relation("TransferSource")
+  destTransfers   StockTransfer[] @relation("TransferDest")
+
+  @@map("stock_locations")
+}
+
+// ─── PRODUCT ─────────────────────────────────────────────────
+
+model Product {
+  id             String    @id @default(cuid())
+  sku            String    @unique
+  name           String
+  description    String?   @db.Text
+  photo          String?
+  buyPrice       Decimal   @db.Decimal(12, 2)
+  sellPrice      Decimal   @db.Decimal(12, 2)
+  currentStock   Int       @default(0)
+  minimumStock   Int       @default(5)
+  expiryDate     DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  // Foreign keys
+  categoryId     String
+  unitId         String
+  supplierId     String?
+
+  // Relations
+  category       Category       @relation(fields: [categoryId], references: [id])
+  unit           Unit           @relation(fields: [unitId], references: [id])
+  supplier       Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  movements      StockMovement[]
+  transfers      StockTransfer[]
+  inventories    Inventory[]
+  alerts         Alert[]
+  batches        ProductBatch[]
+  materialRecipes ProductMaterialRecipe[]
+  rawMaterialExpenses RawMaterialExpense[]
+  preorderItems PreorderItem[]
+
+  @@map("products")
+}
+
+// ─── PRODUCT BATCH / LOT ────────────────────────────────────
+
+model ProductBatch {
+  id             String    @id @default(cuid())
+  batchNumber    String?
+  initialQuantity Int
+  quantity       Int
+  expiryDate     DateTime?
+  receivedAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  // Foreign keys
+  productId  String
+  movementId String?
+
+  // Relations
+  product  Product        @relation(fields: [productId], references: [id])
+  movement StockMovement? @relation(fields: [movementId], references: [id])
+
+  @@index([productId, expiryDate])
+  @@map("product_batches")
+}
+
+// ─── STOCK MOVEMENT ──────────────────────────────────────────
+
+model StockMovement {
+  id              String       @id @default(cuid())
+  type            MovementType
+  quantity        Int
+  unitPrice       Decimal?     @db.Decimal(12, 2)
+  totalPrice      Decimal?     @db.Decimal(12, 2)
+  motif           String
+  validatorName   String       @default("Grâce")
+  customerName    String?
+  customerPhone   String?
+  customerEmail   String?
+  customerAddress String?      @db.Text
+  comment         String?      @db.Text
+  movementDate    DateTime     @default(now())
+  referenceNumber String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  // Foreign keys
+  productId String
+  userId    String
+
+  // Relations
+  product   Product @relation(fields: [productId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+  batches   ProductBatch[]
+
+  @@map("stock_movements")
+}
+
+// ─── STOCK TRANSFER ──────────────────────────────────────────
+
+model StockTransfer {
+  id           String         @id @default(cuid())
+  quantity     Int
+  status       TransferStatus @default(EN_ATTENTE)
+  notes        String?        @db.Text
+  transferDate DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  // Foreign keys
+  productId       String
+  userId          String
+  sourceLocationId String
+  destLocationId   String
+
+  // Relations
+  product         Product       @relation(fields: [productId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
+  sourceLocation  StockLocation @relation("TransferSource", fields: [sourceLocationId], references: [id])
+  destLocation    StockLocation @relation("TransferDest",   fields: [destLocationId],   references: [id])
+
+  @@map("stock_transfers")
+}
+
+// ─── INVENTORY ───────────────────────────────────────────────
+
+model Inventory {
+  id              String    @id @default(cuid())
+  inventoryDate   DateTime  @default(now())
+  theoreticalQty  Int
+  physicalQty     Int
+  difference      Int
+  justification   String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  // Foreign keys
+  productId String
+  userId    String
+
+  // Relations
+  product   Product @relation(fields: [productId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@map("inventories")
+}
+
+// ─── ALERT ───────────────────────────────────────────────────
+
+model Alert {
+  id          String        @id @default(cuid())
+  type        AlertType
+  severity    AlertSeverity @default(WARNING)
+  message     String        @db.Text
+  isRead      Boolean       @default(false)
+  isResolved  Boolean       @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Foreign key
+  productId   String
+
+  // Relation
+  product     Product @relation(fields: [productId], references: [id])
+
+  @@map("alerts")
+}
+
+// ─── REPORT ──────────────────────────────────────────────────
+
+model Report {
+  id         String     @id @default(cuid())
+  type       ReportType
+  title      String
+  parameters Json?
+  fileUrl    String?
+  format     String?    @default("PDF")
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@map("reports")
+}
+
+// ─── RECOMMENDATION ──────────────────────────────────────────
+
+model Recommendation {
+  id          String    @id @default(cuid())
+  productId   String
+  type        String    // "REORDER" | "PROMO" | "FORECAST"
+  message     String    @db.Text
+  priority    String    @default("medium") // critical | high | medium | low
+  suggestedQty Int?
+  isActioned  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("recommendations")
+}
+
+// ─── RAW MATERIAL / FINANCE ─────────────────────────────────
+
+model RawMaterial {
+  id                String    @id @default(cuid())
+  name              String
+  unit              String
+  currentStock      Decimal   @default(0) @db.Decimal(12, 2)
+  minimumStock      Decimal   @default(0) @db.Decimal(12, 2)
+  estimatedUnitCost Decimal   @default(0) @db.Decimal(12, 2)
+  expiryDate        DateTime?
+  notes             String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  supplierId String?
+
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  expenses RawMaterialExpense[]
+  productRecipes ProductMaterialRecipe[]
+
+  @@unique([name, deletedAt])
+  @@map("raw_materials")
+}
+
+model FinanceBudget {
+  id        String    @id @default(cuid())
+  month     DateTime
+  amount    Decimal   @db.Decimal(12, 2)
+  notes     String?   @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  userId String
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([month])
+  @@map("finance_budgets")
+}
+
+model RawMaterialExpense {
+  id          String    @id @default(cuid())
+  description String
+  category    String    @default("MATIERE_PREMIERE")
+  quantity    Decimal?  @db.Decimal(12, 2)
+  unitCost    Decimal?  @db.Decimal(12, 2)
+  amount      Decimal   @db.Decimal(12, 2)
+  spentAt     DateTime  @default(now())
+  notes       String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  materialId String?
+  productId  String?
+  supplierId String?
+  userId     String
+
+  material RawMaterial? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  product  Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplier Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  user     User         @relation(fields: [userId], references: [id])
+
+  @@index([spentAt])
+  @@index([category])
+  @@map("raw_material_expenses")
+}
+
+model ProductMaterialRecipe {
+  id              String   @id @default(cuid())
+  quantityPerUnit Decimal  @db.Decimal(12, 4)
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  productId  String
+  materialId String
+
+  product  Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  material RawMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, materialId])
+  @@map("product_material_recipes")
+}
+
+// ─── PREORDER / COMMERCIAL SALES ────────────────────────────
+
+model Preorder {
+  id              String         @id @default(cuid())
+  referenceNumber String         @unique
+  status          PreorderStatus @default(PAYEE)
+  customerName    String?
+  customerPhone   String?
+  customerEmail   String?
+  customerAddress String?        @db.Text
+  comment         String?        @db.Text
+  cancelReason    String?        @db.Text
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  paidAmount      Decimal        @db.Decimal(12, 2)
+  preorderDate    DateTime       @default(now())
+  canceledAt      DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
+  userId String
+
+  user  User           @relation(fields: [userId], references: [id])
+  items PreorderItem[]
+  paymentHistories PreorderPaymentHistory[]
+
+  @@index([status])
+  @@index([preorderDate])
+  @@map("preorders")
+}
+
+model PreorderItem {
+  id        String   @id @default(cuid())
+  quantity  Int
+  unitPrice Decimal  @db.Decimal(12, 2)
+  total     Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  preorderId String
+  productId  String
+
+  preorder Preorder @relation(fields: [preorderId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@map("preorder_items")
+}
+
+model PreorderPaymentHistory {
+  id             String   @id @default(cuid())
+  oldPaidAmount  Decimal  @db.Decimal(12, 2)
+  newPaidAmount  Decimal  @db.Decimal(12, 2)
+  reason         String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  preorderId String
+  userId     String
+
+  preorder Preorder @relation(fields: [preorderId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([preorderId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("preorder_payment_histories")
+}
+
+// ─── SETTING ─────────────────────────────────────────────────
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  type      String   @default("string") // string | number | boolean | json
+  label     String?
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entity     String
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  // Foreign key
+  userId     String
+
+  // Relation
+  user       User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
