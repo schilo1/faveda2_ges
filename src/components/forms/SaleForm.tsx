@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, Eye, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { useToast } from "@/components/providers/ToastProvider";
-import { receiptLogoAsDataUrl } from "@/lib/receiptLogo";
 
 type Product = {
   id: string;
@@ -54,6 +53,16 @@ function receiptMoney(value: number) {
     .replace(/\B(?=(\d{3})+(?!\d))/g, " ")} FCFA`;
 }
 
+function drawReceiptBrand(doc: any) {
+  doc.setTextColor(79, 92, 61);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(23);
+  doc.text("FAVEDA", 14, 25);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.text("Tisane traditionnelle à base de plantes", 14, 32);
+}
+
 async function buildReceiptPdf(receipt: Receipt) {
   const [{ default: jsPDF }, autoTableModule] = await Promise.all([
     import("jspdf"),
@@ -67,19 +76,7 @@ async function buildReceiptPdf(receipt: Receipt) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
 
-  try {
-    const logo = await receiptLogoAsDataUrl();
-    doc.addImage(logo, "JPEG", 14, 8, 60, 53);
-  } catch (error) {
-    console.error("Logo du reçu non affiché", error);
-    doc.setTextColor(79, 92, 61);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text("FAVEDA", 14, 25);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text("Tisane traditionnelle à base de plantes", 14, 32);
-  }
+  drawReceiptBrand(doc);
 
   doc.setDrawColor(79, 92, 61);
   doc.setLineWidth(0.5);
@@ -129,7 +126,7 @@ async function buildReceiptPdf(receipt: Receipt) {
   autoTable(doc, {
     startY: 122,
     margin: { left: 14, right: 14 },
-    tableWidth: 154,
+    tableWidth: 150,
     head: [["Produit", "SKU", "Qté", "P.U.", "Total"]],
     body: receipt.items.map((item) => [
       item.name,
@@ -148,8 +145,8 @@ async function buildReceiptPdf(receipt: Receipt) {
     },
     styles: {
       font: "helvetica",
-      fontSize: 7.8,
-      cellPadding: 1.5,
+      fontSize: 7.2,
+      cellPadding: 1.2,
       lineColor: [226, 226, 220],
       lineWidth: 0.1,
       textColor: [31, 41, 55],
@@ -158,10 +155,10 @@ async function buildReceiptPdf(receipt: Receipt) {
     alternateRowStyles: { fillColor: [248, 248, 246] },
     columnStyles: {
       0: { cellWidth: 50, overflow: "linebreak" },
-      1: { cellWidth: 24 },
+      1: { cellWidth: 20 },
       2: { halign: "right", cellWidth: 14 },
-      3: { halign: "right", cellWidth: 28 },
-      4: { halign: "right", cellWidth: 28 },
+      3: { halign: "right", cellWidth: 33 },
+      4: { halign: "right", cellWidth: 33 },
     },
   });
 
