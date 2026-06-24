@@ -23,3 +23,18 @@ export async function PATCH(req: NextRequest) {
   await prisma.alert.updateMany({ where: { id: { in: ids } }, data: { isRead: true } });
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+
+  const { ids } = await req.json().catch(() => ({ ids: [] })) as { ids?: string[] };
+  const alertIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+
+  if (alertIds.length === 0) {
+    return NextResponse.json({ error: "Aucune alerte sélectionnée." }, { status: 400 });
+  }
+
+  await prisma.alert.deleteMany({ where: { id: { in: alertIds } } });
+  return NextResponse.json({ success: true });
+}

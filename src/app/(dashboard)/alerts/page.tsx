@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { AlertType } from "@prisma/client";
 import { SendAlertsEmailButton } from "@/components/actions/SendAlertsEmailButton";
+import { DeleteAlertButton } from "@/components/actions/DeleteAlertButton";
 
 const typeLabels: Record<AlertType, string> = {
   RUPTURE_STOCK: "Rupture de stock",
@@ -62,9 +63,12 @@ export default async function AlertsPage() {
               <p className="text-sm text-gray-600 mt-0.5">{a.message}</p>
               <p className="text-xs text-gray-400 mt-1">{format(a.createdAt, "dd MMM yyyy à HH:mm", { locale: fr })}</p>
             </div>
-            <div className="text-right flex-shrink-0">
-              <p className="text-lg font-bold text-gray-700">{a.product.currentStock}</p>
-              <p className="text-xs text-gray-400">en stock</p>
+            <div className="flex flex-shrink-0 items-start gap-3">
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-700">{a.product.currentStock}</p>
+                <p className="text-xs text-gray-400">en stock</p>
+              </div>
+              <DeleteAlertButton id={a.id} />
             </div>
           </div>
         )})}
