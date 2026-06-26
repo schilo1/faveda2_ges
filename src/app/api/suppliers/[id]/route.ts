@@ -60,6 +60,12 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
   }
 
+  const exists = await prisma.supplier.findFirst({
+    where: { id: params.id, deletedAt: null },
+    select: { id: true },
+  });
+  if (!exists) return NextResponse.json({ error: "Fournisseur introuvable" }, { status: 404 });
+
   await prisma.supplier.update({
     where: { id: params.id },
     data: { deletedAt: new Date(), isActive: false },

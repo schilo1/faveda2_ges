@@ -1,8 +1,12 @@
+import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { Plus, Truck, Mail, Phone } from "lucide-react";
+import { DeleteSupplierButton } from "@/components/suppliers/DeleteSupplierButton";
 
 export default async function SuppliersPage() {
+  const session = await auth();
+  const isAdmin = (session?.user as any)?.role === "ADMIN";
   const suppliers = await prisma.supplier.findMany({
     where: { deletedAt: null },
     include: { _count: { select: { products: true } } },
@@ -36,7 +40,10 @@ export default async function SuppliersPage() {
               <div className="w-10 h-10 rounded-2xl bg-[#F3F3F3] border border-[#D9D7D2] flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-105">
                 <Truck size={18} className="text-[#596744]" />
               </div>
-              <Link href={`/suppliers/${s.id}/edit`} className="text-xs text-[#596744] hover:underline font-medium">Modifier</Link>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <Link href={`/suppliers/${s.id}/edit`} className="text-xs text-[#596744] hover:underline font-medium">Modifier</Link>
+                {isAdmin && <DeleteSupplierButton supplierId={s.id} supplierName={s.name} />}
+              </div>
             </div>
             <div>
               <h3 className="font-semibold text-gray-800">{s.name}</h3>
